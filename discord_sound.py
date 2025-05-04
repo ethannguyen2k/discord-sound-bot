@@ -22,6 +22,10 @@ SOUND_FILES = [
     'sound_file_4.mp3'
 ]
 
+# Global variables to store timer settings
+MIN_MINUTES = 5
+MAX_MINUTES = 8
+
 # Global variables to track state
 sound_task = None
 last_channel = None
@@ -98,9 +102,126 @@ async def leave(ctx):
     else:
         await ctx.send("I'm not in a voice channel!")
 
+@bot.command()
+async def status(ctx):
+    """Show current bot status and timer information"""
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        await ctx.send("I'm not currently connected to a voice channel.")
+        return
+        
+    # Calculate remaining time if available
+    if start_time is not None and wait_time is not None:
+        elapsed = asyncio.get_event_loop().time() - start_time
+        remaining = max(0, wait_time - elapsed)
+        minutes = int(remaining // 60)
+        seconds = int(remaining % 60)
+        await ctx.send(f"Connected to: {ctx.voice_client.channel.name}\n"
+                       f"Next sound in: {minutes}m {seconds}s\n"
+                       f"Available sounds: {len(SOUND_FILES)}")
+    else:
+        await ctx.send(f"Connected to: {ctx.voice_client.channel.name}\n"
+                       f"Timer status: Not available\n"
+                       f"Available sounds: {len(SOUND_FILES)}")
+
+@bot.command()
+async def sounds(ctx):
+    """List all available sounds"""
+    sound_list = "\n".join([f"{i}: {sound}" for i, sound in enumerate(SOUND_FILES)])
+    await ctx.send(f"Available sounds:\n```\n{sound_list}\n```")
+
+@bot.command()
+async def timer(ctx, min_minutes: int = None, max_minutes: int = None):
+    """
+    Change the random timer range (in minutes) for the next sound
+    Usage: !timer [min] [max]
+    Example: !timer 15 30 (sets timer range to 15-30 minutes)
+    """
+    global MIN_MINUTES, MAX_MINUTES
+    
+    # If no arguments, show current settings
+    if min_minutes is None or max_minutes is None:
+        await ctx.send(f"Current timer range: {MIN_MINUTES}-{MAX_MINUTES} minutes")
+        
+        # If timer is running, show remaining time
+        if start_time is not None and wait_time is not None:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            remaining = max(0, wait_time - elapsed)
+            minutes = int(remaining // 60)
+            seconds = int(remaining % 60)
+            await ctx.send(f"Next sound will play in: {minutes}m {seconds}s")
+        return
+        
+    # Validate input
+    if min_minutes < 1 or max_minutes < min_minutes:
+        await ctx.send("Invalid timer range. Min must be at least 1 and Max must be greater than Min.")
+        return
+        
+    # Update timer settings
+    MIN_MINUTES = min_minutes
+    MAX_MINUTES = max_minutes
+    await ctx.send(f"Timer range updated to {MIN_MINUTES}-{MAX_MINUTES} minutes for the next sound cycle.")
+
+@bot.command()
+async def set_timer(ctx, minutes: float = None):
+    """
+    Set the current timer to a specific number of minutes
+    Usage: !set_timer [minutes]
+    Example: !set_timer 5 (sets current timer to 5 minutes)
+    Example: !set_timer 0.5 (sets current timer to 30 seconds)
+    """
+    global start_time, wait_time, sound_task
+    
+    # Check if connected to voice
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        await ctx.send("I'm not currently connected to a voice channel.")
+        return
+    
+    # If no arguments, show current timer
+    if minutes is None:
+        if start_time is not None and wait_time is not None:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            remaining = max(0, wait_time - elapsed)
+            min_remaining = int(remaining // 60)
+            sec_remaining = int(remaining % 60)
+            await ctx.send(f"Current timer: {min_remaining}m {sec_remaining}s remaining")
+        else:
+            await ctx.send("No active timer found.")
+        return
+    
+    # Validate input
+    if minutes < 0:
+        await ctx.send("Timer must be a positive number of minutes.")
+        return
+    
+    # Cancel existing task if it exists
+    if sound_task:
+        sound_task.cancel()
+    
+    # Set new timer values
+    wait_time = minutes * 60
+    start_time = asyncio.get_event_loop().time()
+    
+    # Start new task with manually set timer
+    sound_task = bot.loop.create_task(play_random_sounds(ctx.voice_client, wait_time))
+    
+    # Format message based on whether it's less than a minute
+    if minutes < 1:
+        seconds = int(minutes * 60)
+        await ctx.send(f"Timer set to {seconds} seconds!")
+    else:
+        # For longer times, show minutes and seconds if there's a fractional part
+        min_part = int(minutes)
+        sec_part = int((minutes - min_part) * 60)
+        
+        if sec_part > 0:
+            await ctx.send(f"Timer set to {min_part}m {sec_part}s!")
+        else:
+            await ctx.send(f"Timer set to {min_part} minutes!")
+
 async def play_random_sounds(voice_client, initial_remaining_time=None):
     """
-    Play random sounds at random intervals between 30-45 minutes
+    Play random sounds at random intervals between MIN_MINUTES and MAX_MINUTES.
+    If the bot is disconnected, it will attempt to reconnect and resume playing sounds.
     
     Args:
         voice_client: The voice client to play sounds with
@@ -114,7 +235,7 @@ async def play_random_sounds(voice_client, initial_remaining_time=None):
             try:
                 if remaining_time is None:
                     # Calculate new random wait time in seconds (30-45 minutes)
-                    wait_time = random.randint(30 * 60, 45 * 60)
+                    wait_time = random.randint(MIN_MINUTES * 60, MAX_MINUTES * 60)
                     start_time = asyncio.get_event_loop().time()
                     remaining_time = wait_time
                     logger.info(f"Waiting for {wait_time/60:.1f} minutes before playing sound...")
