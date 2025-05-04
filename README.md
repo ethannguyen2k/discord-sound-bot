@@ -5,7 +5,9 @@ A simple Discord bot that joins voice channels and plays random sound files at r
 ## Features
 
 - Automatically joins voice channels when commanded
-- Plays random sound effects at random intervals (30-45 minutes)
+- Plays random sound effects at random intervals (5-8 minutes by default)
+- Customizable timer settings for sound playback
+- Status checking for current timer and connection
 - Easy to configure with your own sound files
 
 ## Requirements
@@ -63,11 +65,15 @@ A simple Discord bot that joins voice channels and plays random sound files at r
 
 - `!join` - Makes the bot join your current voice channel and start playing random sounds
 - `!leave` - Makes the bot leave the voice channel and stop playing sounds
+- `!status` - Shows the current bot status, including connection info and time until next sound
+- `!sounds` - Lists all available sound files
+- `!timer [min] [max]` - Changes the random timer range (in minutes) for sounds
+- `!set_timer [minutes]` - Sets the current timer to a specific number of minutes (can use decimals for seconds)
 
 ## Customization
 
 You can customize the bot by modifying the following variables in the code:
 
 - `SOUND_FILES` - List of sound files to play
-- Random interval timing (currently set to 30-45 minutes)
+- `MIN_MINUTES` and `MAX_MINUTES` - Default random interval timing (currently set to 5-8 minutes)
 - Or anything more to your heart desires.
